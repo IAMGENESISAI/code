@@ -9,15 +9,13 @@ const execFileAsync = promisify(execFile)
 const packageDir = path.dirname(fileURLToPath(import.meta.url))
 const rootDir = path.resolve(packageDir, "../..")
 const signScript = path.join(rootDir, "script", "sign-windows.ps1")
-// The Electron 42 packaging update briefly installed Linux launchers/icons under
-// "opencode-desktop". Keep that hidden desktop entry around so existing GNOME/KDE
-// pins still resolve after the canonical app id changes back to ai.opencode.desktop.
-const legacyDesktopEntry = path.join(packageDir, "resources", "linux", "opencode-desktop.desktop")
-const legacyDesktopEntryFpm = `${legacyDesktopEntry}=/usr/share/applications/opencode-desktop.desktop`
+const isCI = process.env.GITHUB_ACTIONS === "true"
+const legacyDesktopEntry = path.join(packageDir, "resources", "linux", "code-desktop.desktop")
+const legacyDesktopEntryFpm = `${legacyDesktopEntry}=/usr/share/applications/code-desktop.desktop`
 
 async function signWindows(configuration: { path: string }) {
   if (process.platform !== "win32") return
-  if (process.env.GITHUB_ACTIONS !== "true") return
+  if (!isCI) return
 
   await execFileAsync(
     "pwsh",
@@ -33,22 +31,30 @@ const channel = (() => {
 })()
 
 const APP_IDS = {
-  dev: "ai.opencode.desktop.dev",
-  beta: "ai.opencode.desktop.beta",
-  prod: "ai.opencode.desktop",
+  dev: "ai.iamgenesis.code.dev",
+  beta: "ai.iamgenesis.code.beta",
+  prod: "ai.iamgenesis.code",
 } as const
 
+const PRODUCT_NAMES = {
+  dev: "CODE.IAMGENESIS.AI Dev",
+  beta: "CODE.IAMGENESIS.AI Beta",
+  prod: "CODE.IAMGENESIS.AI",
+} as const
+
+const GITHUB_PUBLISH = {
+  provider: "github" as const,
+  owner: "IAMGENESISAI",
+  repo: "code",
+  channel: "latest",
+}
+
 const getBase = (appId: string): Configuration => ({
-  artifactName: "opencode-desktop-${os}-${arch}.${ext}",
+  artifactName: "code-desktop-${os}-${arch}.${ext}",
   directories: {
     output: "dist",
     buildResources: "resources",
   },
-  // Linux launchers are .desktop files, so this is the desktop file name,
-  // not just the app id. For prod, app id "ai.opencode.desktop" becomes
-  // "ai.opencode.desktop.desktop".
-  // https://developer.gnome.org/documentation/guidelines/maintainer/integrating.html
-  // https://www.electron.build/docs/linux/
   extraMetadata: {
     desktopName: `${appId}.desktop`,
   },
@@ -63,19 +69,20 @@ const getBase = (appId: string): Configuration => ({
   mac: {
     category: "public.app-category.developer-tools",
     icon: `resources/icons/icon.icns`,
-    hardenedRuntime: true,
+    hardenedRuntime: !isCI,
     gatekeeperAssess: false,
     entitlements: "resources/entitlements.plist",
     entitlementsInherit: "resources/entitlements.plist",
-    notarize: true,
+    notarize: !isCI,
+    identity: isCI ? null : undefined,
     target: ["dmg", "zip"],
   },
   dmg: {
-    sign: true,
+    sign: !isCI,
   },
   protocols: {
-    name: "OpenCode",
-    schemes: ["opencode"],
+    name: "CODE.IAMGENESIS.AI",
+    schemes: ["genesis-code"],
   },
   win: {
     icon: `resources/icons/icon.ico`,
@@ -97,8 +104,6 @@ const getBase = (appId: string): Configuration => ({
     executableName: appId,
     desktop: {
       entry: {
-        // Match the installed .desktop file and hicolor icon basename so
-        // Linux shells can associate the running Electron window with its launcher.
         StartupWMClass: appId,
       },
     },
@@ -109,35 +114,34 @@ const getBase = (appId: string): Configuration => ({
 function getConfig() {
   const appId = APP_IDS[channel]
   const base = getBase(appId)
+  const productName = PRODUCT_NAMES[channel]
 
   switch (channel) {
     case "dev": {
       return {
         ...base,
         appId,
-        productName: "OpenCode Dev",
-        rpm: { packageName: "opencode-dev" },
+        productName,
+        rpm: { packageName: "code-iamgenesis-dev" },
       }
     }
     case "beta": {
       return {
         ...base,
         appId,
-        productName: "OpenCode Beta",
-        protocols: { name: "OpenCode Beta", schemes: ["opencode"] },
-        publish: { provider: "github", owner: "anomalyco", repo: "opencode-beta", channel: "latest" },
-        rpm: { packageName: "opencode-beta" },
+        productName,
+        publish: GITHUB_PUBLISH,
+        rpm: { packageName: "code-iamgenesis-beta" },
       }
     }
     case "prod": {
       return {
         ...base,
         appId,
-        productName: "OpenCode",
-        protocols: { name: "OpenCode", schemes: ["opencode"] },
-        publish: { provider: "github", owner: "anomalyco", repo: "opencode", channel: "latest" },
+        productName,
+        publish: GITHUB_PUBLISH,
         deb: { fpm: [legacyDesktopEntryFpm] },
-        rpm: { packageName: "opencode", fpm: [legacyDesktopEntryFpm] },
+        rpm: { packageName: "code-iamgenesis", fpm: [legacyDesktopEntryFpm] },
       }
     }
   }

@@ -43,14 +43,14 @@ import { migrate } from "./migrate"
 import { cleanupStoreFiles } from "./store-cleanup"
 
 const APP_NAMES: Record<string, string> = {
-  dev: "OpenCode Dev",
-  beta: "OpenCode Beta",
-  prod: "OpenCode",
+  dev: "CODE.IAMGENESIS.AI Dev",
+  beta: "CODE.IAMGENESIS.AI Beta",
+  prod: "CODE.IAMGENESIS.AI",
 }
 const APP_IDS: Record<string, string> = {
-  dev: "ai.opencode.desktop.dev",
-  beta: "ai.opencode.desktop.beta",
-  prod: "ai.opencode.desktop",
+  dev: "ai.iamgenesis.code.dev",
+  beta: "ai.iamgenesis.code.beta",
+  prod: "ai.iamgenesis.code",
 }
 const TEST_ONBOARDING = process.env.OPENCODE_TEST_ONBOARDING === "1"
 const jsCallStackFeature = "DocumentPolicyIncludeJSCallStacksInCrashReports"

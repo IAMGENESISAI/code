@@ -24,6 +24,7 @@ import nightowlThemeJson from "./themes/nightowl.json"
 import nordThemeJson from "./themes/nord.json"
 import oneDarkThemeJson from "./themes/one-dark.json"
 import oneDarkProThemeJson from "./themes/onedarkpro.json"
+import iamgenesisThemeJson from "./themes/iamgenesis.json"
 import opencodeThemeJson from "./themes/opencode.json"
 import orngThemeJson from "./themes/orng.json"
 import osakaJadeThemeJson from "./themes/osaka-jade.json"
@@ -62,6 +63,7 @@ export const nightowlTheme = nightowlThemeJson as DesktopTheme
 export const nordTheme = nordThemeJson as DesktopTheme
 export const oneDarkTheme = oneDarkThemeJson as DesktopTheme
 export const oneDarkProTheme = oneDarkProThemeJson as DesktopTheme
+export const iamgenesisTheme = iamgenesisThemeJson as DesktopTheme
 export const opencodeTheme = opencodeThemeJson as DesktopTheme
 export const orngTheme = orngThemeJson as DesktopTheme
 export const osakaJadeTheme = osakaJadeThemeJson as DesktopTheme
@@ -101,6 +103,7 @@ export const DEFAULT_THEMES: Record<string, DesktopTheme> = {
   nord: nordTheme,
   "one-dark": oneDarkTheme,
   onedarkpro: oneDarkProTheme,
+  iamgenesis: iamgenesisTheme,
   opencode: opencodeTheme,
   orng: orngTheme,
   "osaka-jade": osakaJadeTheme,

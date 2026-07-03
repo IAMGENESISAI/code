@@ -318,6 +318,7 @@ export function AppBaseProviders(props: ParentProps<{ locale?: Locale }>) {
     <MetaProvider>
       <Font />
       <ThemeProvider
+        defaultTheme="iamgenesis"
         onThemeApplied={(_, mode) => {
           void window.api?.setTitlebar?.({ mode })
         }}

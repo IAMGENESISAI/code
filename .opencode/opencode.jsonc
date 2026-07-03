@@ -1,6 +1,12 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "provider": {},
+  "experimental": {
+    "policies": [
+      { "effect": "allow", "action": "provider.use", "resource": "iamgenesis" },
+      { "effect": "deny", "action": "provider.use", "resource": "*" },
+    ],
+  },
   "permission": {},
   "references": {
     "effect": {

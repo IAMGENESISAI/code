@@ -37,6 +37,7 @@
         "@dnd-kit/solid": "0.5.0",
         "@kobalte/core": "catalog:",
         "@opencode-ai/core": "workspace:*",
+        "@opencode-ai/genesis-brand": "workspace:*",
         "@opencode-ai/schema": "workspace:*",
         "@opencode-ai/sdk": "workspace:*",
         "@opencode-ai/session-ui": "workspace:*",
@@ -488,6 +489,13 @@
         "@tsconfig/node22": "22.0.2",
         "@types/node": "catalog:",
         "typescript": "catalog:",
+      },
+    },
+    "packages/genesis-brand": {
+      "name": "@opencode-ai/genesis-brand",
+      "version": "1.17.13",
+      "peerDependencies": {
+        "solid-js": "^1.9.0",
       },
     },
     "packages/http-recorder": {
@@ -958,6 +966,7 @@
       "version": "1.17.13",
       "dependencies": {
         "@kobalte/core": "catalog:",
+        "@opencode-ai/genesis-brand": "workspace:*",
         "@pierre/diffs": "catalog:",
         "@shikijs/stream": "catalog:",
         "@shikijs/transformers": "3.9.2",
@@ -1947,6 +1956,8 @@
     "@opencode-ai/enterprise": ["@opencode-ai/enterprise@workspace:packages/enterprise"],
 
     "@opencode-ai/function": ["@opencode-ai/function@workspace:packages/function"],
+
+    "@opencode-ai/genesis-brand": ["@opencode-ai/genesis-brand@workspace:packages/genesis-brand"],
 
     "@opencode-ai/http-recorder": ["@opencode-ai/http-recorder@workspace:packages/http-recorder"],
 

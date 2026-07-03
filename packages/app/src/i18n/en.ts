@@ -1,4 +1,6 @@
-export const dict = {
+import { applyBrandI18n } from "@opencode-ai/genesis-brand/i18n"
+
+const baseDict = {
   "command.category.suggested": "Suggested",
   "command.category.view": "View",
   "command.category.project": "Project",
@@ -1075,3 +1077,5 @@ export const dict = {
   "workspace.reset.archived.many": "{{count}} sessions will be archived.",
   "workspace.reset.note": "This will reset the workspace to match the default branch.",
 }
+
+export const dict = applyBrandI18n(baseDict)

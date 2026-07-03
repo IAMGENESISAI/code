@@ -1,0 +1,18 @@
+{
+  "name": "@opencode-ai/genesis-brand",
+  "version": "1.17.13",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    "./constants": "./src/constants.ts",
+    "./release": "./src/release.ts",
+    "./i18n": "./src/i18n.ts",
+    "./logo": "./src/components/logo.tsx",
+    "./theme": "./src/theme/iamgenesis.json",
+    "./assets/logo.png": "./src/assets/logo.png"
+  },
+  "peerDependencies": {
+    "solid-js": "^1.9.0"
+  }
+}
