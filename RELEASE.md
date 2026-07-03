@@ -11,6 +11,45 @@ Minimum release wiring for the IAMGENESIS fork of OpenCode. Artifacts publish to
 | `latest-mac.yml`, `latest-linux.yml`, `latest.yml` | Desktop auto-updater metadata |
 | `install` | Curl-install script |
 
+## Cut a release (local)
+
+Run everything from your machine — no GitHub Actions required.
+
+**Prerequisites:** `bun`, `gh` (logged in), `zip`, `tar`
+
+```bash
+cd code
+chmod +x script/release-local.sh   # first time only
+./script/release-local.sh 1.0.0-iamgenesis.1
+```
+
+Common options:
+
+| Flag | Purpose |
+|------|---------|
+| `--skip-push` | Publish assets without pushing the tag (avoids triggering CI) |
+| `--desktop` | Include desktop installer for your current OS |
+| `--all-platforms` | Build CLI archives for every platform (slow) |
+| `--draft` | Create a draft release |
+| `-y` | Skip confirmation prompt |
+
+Examples:
+
+```bash
+# First release: current platform CLI + install script only
+./script/release-local.sh 1.0.0-iamgenesis.1 --skip-push -y
+
+# macOS desktop + CLI, then push tag when ready
+./script/release-local.sh 1.0.0-iamgenesis.1 --desktop
+
+# Full multi-platform CLI (run from a machine with bun cross-compile support)
+./script/release-local.sh 1.0.0-iamgenesis.2 --all-platforms
+```
+
+The script builds artifacts, stages them in `release-assets/`, creates tag `v<version>`, and runs `gh release create` (or uploads if the release already exists).
+
+**Note:** Pushing a `v*` tag also triggers [`.github/workflows/release.yml`](.github/workflows/release.yml). Use `--skip-push` until you want CI releases, or disable/rename that workflow.
+
 ## Cut a release (CI)
 
 1. Ensure `dev` is ready and IAMGENESIS auth/api config is documented in [`.env.example`](.env.example).

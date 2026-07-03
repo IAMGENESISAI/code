@@ -13,7 +13,7 @@ import { ProviderV2 } from "../../provider"
 
 const INTEGRATION_ID = Integration.ID.make("iamgenesis")
 const PROVIDER_ID = ProviderV2.ID.make("iamgenesis")
-const CLIENT_ID = "code"
+const CLIENT_ID = "web"
 const CALLBACK_PORT = 1456
 const METHOD_ID = Integration.MethodID.make("browser")
 
