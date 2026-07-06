@@ -54,6 +54,8 @@ import { EventV2Bridge } from "@/event-v2-bridge"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { AppNodeBuilderV1 } from "./app-node-builder-v1"
 import { SessionProjector } from "@opencode-ai/core/session/projector"
+import { Credential } from "@opencode-ai/core/credential"
+import { Integration } from "@opencode-ai/core/integration"
 
 export const AppLayer = AppNodeBuilderV1.build(
   LayerNode.group([
@@ -61,6 +63,8 @@ export const AppLayer = AppNodeBuilderV1.build(
     FSUtil.node,
     Database.node,
     Auth.node,
+    Credential.node,
+    Integration.node,
     Account.node,
     Config.node,
     Git.node,

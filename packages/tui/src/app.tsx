@@ -26,6 +26,7 @@ import {
 import { TuiPathsProvider, TuiStartupProvider, TuiTerminalEnvironmentProvider, useTuiStartup } from "./context/runtime"
 import { DialogProvider, useDialog } from "./ui/dialog"
 import { DialogProvider as DialogProviderList } from "./component/dialog-provider"
+import { DialogIamgenesisLogin } from "./component/dialog-iamgenesis-login"
 import { ErrorComponent } from "./component/error-component"
 import { PluginRouteMissing } from "./component/plugin-route-missing"
 import { ProjectProvider, useProject } from "./context/project"
@@ -34,7 +35,7 @@ import { useEvent } from "./context/event"
 import { SDKProvider, useSDK } from "./context/sdk"
 import { StartupLoading } from "./component/startup-loading"
 import { SyncProvider, useSync } from "./context/sync"
-import { DataProvider } from "./context/data"
+import { DataProvider, useData } from "./context/data"
 import { LocationProvider } from "./context/location"
 import { LocalProvider, useLocal } from "./context/local"
 import { PermissionProvider } from "./context/permission"
@@ -377,6 +378,12 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
   const sync = useSync()
   const project = useProject()
   const exit = useExit()
+  const data = useData()
+  const kvForIam = useKV()
+  // Reset the dismissed flag at the start of every run so login is offered if not connected.
+  // (It may have been persisted from a previous manual close.) The flag only prevents re-showing
+  // within the same run if the user clicks off/Esc before the OAuth completes.
+  kvForIam.set("iamgenesis_login_dismissed", false)
   const promptRef = usePromptRef()
   const pluginRuntime = usePluginRuntime()
   const attention = createTuiAttention({ renderer, config: tuiConfig, kv })
@@ -541,6 +548,111 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         // only trigger when we transition into an empty-provider state
         if (!isEmpty || wasEmpty) return
         dialog.replace(() => <DialogProviderList />)
+      },
+    ),
+  )
+
+  // IAMGENESIS-specific auto login flow on startup (when running the opencode command)
+  // If only the fallback model (or none), and no V2 integration connection yet, and user didn't manually dismiss.
+  createEffect(
+    on(
+      () => {
+        if (sync.status !== "complete") return false
+        const iam = sync.data.provider.find((p: any) => p.id === "iamgenesis")
+        if (!iam) return true // restricted to iamgenesis only in this fork
+        const models = iam.models || {}
+        const ids = Object.keys(models)
+        const onlyFallback = ids.length <= 1 && (ids[0] === "genesis-default" || ids.length === 0)
+        if (!onlyFallback) return false
+
+        // Authoritative: if V2 integration reports a connection, we have auth (even if legacy list is stale)
+        const ints = (data.location?.integration?.list?.() as any[]) || []
+        const iamInt = ints.find((i: any) => i.id === "iamgenesis")
+        const hasV2Connection = !!(iamInt && iamInt.connections && iamInt.connections.length > 0)
+        if (hasV2Connection) return false
+
+        const dismissed = kvForIam.get("iamgenesis_login_dismissed", false)
+        return !dismissed
+      },
+      (needsLogin, wasNeeds) => {
+        if (!needsLogin || wasNeeds) return
+        // Auto-start the branded IAMGENESIS login flow
+        dialog.replace(() => <DialogIamgenesisLogin />)
+      },
+    ),
+  )
+
+  function debugLog(msg: string, data?: any) {
+    const line = `[IAMGENESIS] ${new Date().toISOString()} ${msg}${data ? ' ' + JSON.stringify(data) : ''}`;
+    console.error(line);
+    Bun.write("/tmp/iamgenesis-debug.log", line + "\n", { append: true } as any).catch(() => {});
+  }
+
+  // When V2 reports iamgenesis connection (e.g. after browser redirect even if user closed dialog),
+  // perform the post-login refresh so legacy provider gets real models and we land in a session.
+  createEffect(
+    on(
+      () => {
+        const ints = (data.location?.integration?.list?.() as any[]) || []
+        const iamInt = ints.find((i: any) => i.id === "iamgenesis")
+        return !!(iamInt && iamInt.connections && iamInt.connections.length > 0)
+      },
+      (hasConn, wasConn) => {
+        if (!hasConn || wasConn) return
+        debugLog("V2 connection detected via effect - running post-login work");
+        kvForIam.set("iamgenesis_login_dismissed", false)
+        toast.show({ message: "Logged in to IAMGENESIS.AI", variant: "success" })
+        ;(async () => {
+          try {
+            await sdk.client.instance.dispose()
+            await sync.bootstrap()
+            // If the login dialog is actively handling post-login (e.g. showing continue / selector), let it manage clear + session.
+            if (kvForIam.get("iamgenesis_post_login", false)) {
+              debugLog("app effect: dialog handling post-login, skipping duplicate create/clear");
+              // still make sure model is set for the legacy side
+              const iamProv = sync.data.provider.find((p: any) => p.id === "iamgenesis")
+              if (iamProv) {
+                const ids = Object.keys(iamProv.models || {})
+                const chosen = ids.find((id: string) => id !== "genesis-default") || ids[0] || "genesis-default"
+                try { local.model.set({ providerID: "iamgenesis", modelID: chosen }, { recent: true }) } catch {}
+              }
+              return
+            }
+            // Check tenants from v2 data after bootstrap. If >0, a selector may be showing in the login dialog;
+            const provs = (data.location?.provider?.list?.() as any[]) || []
+            const p = provs.find((pp: any) => pp.id === "iamgenesis")
+            const ts = p?.options?.tenants || []
+            if (ts.length > 0) {
+              debugLog("app effect: tenants visible, skipping auto session/create/clear to allow selector");
+              return
+            }
+            const iamProv = sync.data.provider.find((p: any) => p.id === "iamgenesis")
+            let chosen = "genesis-default"
+            if (iamProv) {
+              const ids = Object.keys(iamProv.models || {})
+              chosen = ids.find((id: string) => id !== "genesis-default") || ids[0] || chosen
+              try {
+                local.model.set({ providerID: "iamgenesis", modelID: chosen }, { recent: true })
+              } catch {}
+            }
+            try {
+              const cr = await sdk.client.session.create({
+                model: { providerID: "iamgenesis", id: chosen },
+              })
+              if (cr.data?.id) {
+                route.navigate({ type: "session", sessionID: cr.data.id })
+              } else {
+                route.navigate({ type: "home" })
+              }
+            } catch (e) {
+              debugLog("post-login session create failed", e);
+              route.navigate({ type: "home" })
+            }
+            dialog.clear()
+          } catch (e) {
+            debugLog("post-login refresh failed", e);
+          }
+        })()
       },
     ),
   )

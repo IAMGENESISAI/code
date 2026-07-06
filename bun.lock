@@ -96,7 +96,7 @@
       "name": "@opencode-ai/cli",
       "version": "1.17.13",
       "bin": {
-        "lildax": "./bin/lildax.cjs",
+        "iamgcode": "./bin/iamgcode.cjs",
       },
       "dependencies": {
         "@effect/platform-node": "catalog:",

@@ -57,6 +57,7 @@ export const Info = Schema.Struct({
   disabled: Schema.Boolean.pipe(optional),
   api: Api,
   request: Request,
+  options: Schema.Record(Schema.String, Schema.Unknown).pipe(optional),
 })
   .annotate({ identifier: "ProviderV2.Info" })
   .pipe(
@@ -67,6 +68,7 @@ export const Info = Schema.Struct({
           name: id,
           api: { type: "native", settings: {} },
           request: { headers: {}, body: {} },
+          options: {},
         }),
     })),
   )

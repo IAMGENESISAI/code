@@ -23,9 +23,9 @@ describe("IamgenesisPlugin", () => {
         {
           id: Integration.MethodID.make("browser"),
           type: "oauth",
-          label: "Sign in with I AM GENESIS",
+          label: "Sign in with IAMGENESIS.AI",
         },
-        { type: "key", label: "API key" },
+        { type: "key", label: "Account ID" },
         { type: "env", names: ["IAMGENESIS_ACCESS_TOKEN", "IAMGENESIS_API_KEY"] },
       ])
     }),

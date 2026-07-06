@@ -28,6 +28,8 @@ import { optional } from "@opencode-ai/core/schema"
 import { ProviderTransform } from "./transform"
 import { ProviderV2 } from "@opencode-ai/core/provider"
 import { ModelV2 } from "@opencode-ai/core/model"
+import { Credential } from "@opencode-ai/core/credential"
+import { Integration } from "@opencode-ai/core/integration"
 import { ModelStatus } from "./model-status"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { ProviderError } from "./error"
@@ -950,6 +952,74 @@ function custom(dep: CustomDep): Record<string, CustomLoader> {
         options,
       }
     }),
+    iamgenesis: (input: Info) => {
+      // token resolution prefers legacy stored/env then pre-resolved V2 at init snapshot
+      // (to avoid widening CustomLoader reqs; token is captured when provider state builds)
+      return Effect.gen(function* () {
+        const envs = yield* dep.env()
+        const stored = yield* dep.auth(input.id).pipe(Effect.option, Effect.map((o) => (o._tag === "Some" ? o.value : undefined)))
+        const legacyToken = stored?.type === "oauth" ? stored.access : stored?.type === "api" ? stored.key : undefined
+        let token = legacyToken ?? envs["IAMGENESIS_ACCESS_TOKEN"] ?? envs["IAMGENESIS_API_KEY"] ?? (dep as any).iamgenesisV2Token
+
+        const rawBase = input.options?.baseURL ?? envs["IAMGENESIS_API_URL"] ?? "https://api.iamgenesis.ai"
+        const baseURL = rawBase.replace(/\/+$/, "").endsWith("/v1") ? rawBase.replace(/\/+$/, "") : `${rawBase.replace(/\/+$/, "")}/v1`
+
+        let tenants: any[] = []
+        if (token) {
+          tenants = yield* Effect.promise(() => fetchIamgenesisTenants(token, envs))
+        }
+
+        return {
+          autoload: !!token,
+          options: { baseURL, ...(token ? { apiKey: token } : {}), tenants },
+          async getModel(sdk: any, modelID: string) {
+            return sdk.languageModel(modelID)
+          },
+          async discoverModels() {
+            const auth = await readIamgenesisAuth().catch(() => ({} as { token?: string; tenantId?: string }))
+            let useToken = token || (dep as any).iamgenesisV2Token || auth.token
+            if (!useToken) return {}
+            try {
+              const modelsUrl = `${baseURL.replace(/\/+$/, "")}/models`
+              const headers: Record<string, string> = { Authorization: `Bearer ${useToken}` }
+              if (auth.tenantId) headers["X-Tenant-Id"] = auth.tenantId
+              const response = await fetch(modelsUrl, { headers })
+              if (!response.ok) return {}
+              const body = (await response.json()) as { data?: Array<{ id: string }> }
+              const models: Record<string, Model> = {}
+              for (const item of body.data ?? []) {
+                const id = String(item.id)
+                models[id] = {
+                  id: ModelV2.ID.make(id),
+                  providerID: ProviderV2.ID.make("iamgenesis"),
+                  api: { id, url: "", npm: "@ai-sdk/openai-compatible" },
+                  name: item.id,
+                  family: "iamgenesis",
+                  capabilities: {
+                    temperature: true,
+                    reasoning: false,
+                    attachment: false,
+                    toolcall: true,
+                    input: { text: true, audio: false, image: false, video: false, pdf: false },
+                    output: { text: true, audio: false, image: false, video: false, pdf: false },
+                    interleaved: false,
+                  },
+                  cost: { input: 0, output: 0, cache: { read: 0, write: 0 } },
+                  limit: { context: 128000, output: 8192 },
+                  status: "active",
+                  options: {},
+                  headers: {},
+                  release_date: "",
+                }
+              }
+              return models
+            } catch {
+              return {}
+            }
+          },
+        }
+      })
+    },
   }
 }
 
@@ -1322,6 +1392,47 @@ const layer = Layer.effect(
         const catalog = mapValues(modelsDev, fromModelsDevProvider)
         const database = mapValues(catalog, toPublicInfo)
 
+        if (!database["iamgenesis"]) {
+          database["iamgenesis"] = {
+            id: ProviderV2.ID.make("iamgenesis"),
+            source: "custom",
+            name: "IAMGENESIS.AI",
+            env: ["IAMGENESIS_ACCESS_TOKEN", "IAMGENESIS_API_KEY"],
+            key: undefined,
+            options: {
+              baseURL: process.env.IAMGENESIS_API_URL ?? "https://api.iamgenesis.ai/v1",
+            },
+            models: {
+              "genesis-default": {
+                id: ModelV2.ID.make("genesis-default"),
+                providerID: ProviderV2.ID.make("iamgenesis"),
+                api: {
+                  id: "genesis-default",
+                  url: "",
+                  npm: "@ai-sdk/openai-compatible",
+                },
+                name: "Genesis Default",
+                family: "iamgenesis",
+                capabilities: {
+                  temperature: true,
+                  reasoning: false,
+                  attachment: false,
+                  toolcall: true,
+                  input: { text: true, audio: false, image: false, video: false, pdf: false },
+                  output: { text: true, audio: false, image: false, video: false, pdf: false },
+                  interleaved: false,
+                },
+                cost: { input: 0, output: 0, cache: { read: 0, write: 0 } },
+                limit: { context: 128000, output: 8192 },
+                status: "active",
+                options: {},
+                headers: {},
+                release_date: "",
+              },
+            },
+          }
+        }
+
         const providers: Record<ProviderV2.ID, Info> = {} as Record<ProviderV2.ID, Info>
         const languages = new Map<string, LanguageModelV3>()
         const modelLoaders: {
@@ -1340,6 +1451,11 @@ const layer = Layer.effect(
           env: () => env.all(),
           get: (key: string) => env.get(key),
         }
+
+        const iamgenesisV2Token = yield* Effect.promise(() => readIamgenesisToken().catch(() => undefined))
+
+        // attach pre-resolved v2 token (captured at provider init time) for the iamgenesis loader
+        ;(dep as any).iamgenesisV2Token = iamgenesisV2Token
 
         function mergeProvider(providerID: ProviderV2.ID, provider: Partial<Info>) {
           const existing = providers[providerID]
@@ -1578,6 +1694,29 @@ const layer = Layer.effect(
           })
         }
 
+        // Always include IAMGENESIS.AI provider in the list so it's selectable
+        const iamgenesisID = ProviderV2.ID.make("iamgenesis")
+        if (!disabled.has(iamgenesisID) && database[iamgenesisID] && !providers[iamgenesisID]) {
+          providers[iamgenesisID] = database[iamgenesisID]
+        }
+        if (discoveryLoaders[iamgenesisID] && providers[iamgenesisID]) {
+          yield* Effect.promise(async () => {
+            try {
+              const discovered = await discoveryLoaders[iamgenesisID]()
+              if (Object.keys(discovered).length > 0) {
+                providers[iamgenesisID].models = discovered
+              }
+              const existing = providers[iamgenesisID].options?.tenants
+              if (Array.isArray(existing) && existing.length > 0) return
+              const token = await readIamgenesisToken().catch(() => undefined)
+              if (!token) return
+              const tList = await fetchIamgenesisTenants(token)
+              if (tList.length === 0) return
+              providers[iamgenesisID].options = { ...(providers[iamgenesisID].options ?? {}), tenants: tList }
+            } catch {}
+          })
+        }
+
         for (const [id, provider] of Object.entries(providers)) {
           const providerID = ProviderV2.ID.make(id)
           if (!isProviderAllowed(providerID)) {
@@ -1663,6 +1802,11 @@ const layer = Layer.effect(
 
         if (model.api.npm.includes("@ai-sdk/openai-compatible") && options["includeUsage"] !== false) {
           options["includeUsage"] = true
+        }
+
+        if (model.providerID === "iamgenesis" && !options["apiKey"]) {
+          const fresh = await readIamgenesisToken().catch(() => undefined)
+          if (fresh) options["apiKey"] = fresh
         }
 
         const baseURL = iife(() => {
@@ -1972,10 +2116,64 @@ export function parseModel(model: string) {
   }
 }
 
+async function fetchIamgenesisTenants(
+  token: string,
+  envs: Record<string, string | undefined> = {
+    IAMGENESIS_API_URL: process.env.IAMGENESIS_API_URL,
+    IAMGENESIS_AUTH_URL: process.env.IAMGENESIS_AUTH_URL,
+  },
+) {
+  const api = (envs.IAMGENESIS_API_URL ?? "https://api.iamgenesis.ai").replace(/\/+$/, "")
+  const auth = (envs.IAMGENESIS_AUTH_URL ?? "https://auth.iamgenesis.ai").replace(/\/+$/, "")
+  const urls = [`${api}/v1/tenants`, `${api}/api/tenants`, `${api}/tenants`, `${auth}/api/tenants`]
+  for (const url of urls) {
+    try {
+      const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+      if (!response.ok) continue
+      const body = (await response.json()) as { data?: unknown[]; tenants?: unknown[] } | unknown[]
+      if (Array.isArray(body)) return body
+      if (Array.isArray(body.data)) return body.data
+      if (body && typeof body === "object" && Array.isArray((body as { tenants?: unknown[] }).tenants)) {
+        return (body as { tenants: unknown[] }).tenants
+      }
+    } catch {}
+  }
+  return []
+}
+
+async function readIamgenesisAuth(): Promise<{ token?: string; tenantId?: string }> {
+  try {
+    const { Database } = await import("bun:sqlite")
+    const dbPath = path.join(Global.Path.data, "opencode.db")
+    const db = new Database(dbPath, { readonly: true })
+    try {
+      const row = db
+        .query<{ value: string; label: string }, [string]>(
+          "SELECT value, label FROM credential WHERE integration_id = ? ORDER BY time_created DESC LIMIT 1",
+        )
+        .get("iamgenesis")
+      if (!row?.value) return {}
+      const val = typeof row.value === "string" ? JSON.parse(row.value) : row.value
+      const token = val?.type === "oauth" && val.access ? val.access : val?.type === "key" && val.key ? val.key : undefined
+      const tenantId = row.label && row.label !== "default" ? row.label : undefined
+      return { token, tenantId }
+    } finally {
+      db.close()
+    }
+  } catch {
+    return {}
+  }
+}
+
+async function readIamgenesisToken(): Promise<string | undefined> {
+  const auth = await readIamgenesisAuth()
+  return auth.token
+}
+
 export const node = LayerNode.make({
   service: Service,
   layer: layer,
-  deps: [FSUtil.node, Config.node, Auth.node, Env.node, Plugin.node, ModelsDev.node, RuntimeFlags.node],
+  deps: [FSUtil.node, Config.node, Auth.node, Env.node, Plugin.node, ModelsDev.node, RuntimeFlags.node, Credential.node, Integration.node],
 })
 
 export * as Provider from "./provider"
